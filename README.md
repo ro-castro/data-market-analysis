@@ -56,11 +56,11 @@ data-market-analysis/
 ├── .git/                    # Metadados internos do Git (controle de versão)
 │
 ├── dados_brutos/             # Dados brutos da Receita Federal
-│   ├── dados_cnpj/           # Estabelecimentos (arquivos CSV originais)
+│   ├── dados_stabelecimentos/           # Estabelecimentos (arquivos CSV originais)
 │   └── dados_empresas/       # Empresas (arquivos CSV originais)
 │
 ├── dados_filtrados/          # Dados processados e prontos para análise
-│   ├── cnpj_filtrado.csv     # Estabelecimentos filtrados (ativos + CNAE)
+│   ├── estabelecimentos_filtrado.csv     # Estabelecimentos filtrados (ativos + CNAE)
 │   └── empresas_filtradas.csv# Dados consolidados das empresas
 │
 ├── python/                   # Scripts de processamento e pipeline
