@@ -1,20 +1,46 @@
+
 # pesquisamercado2_opcao2_final.py
+"""
+Pipeline de pré-processamento de dados públicos de CNPJ (Receita Federal).
+
+Este script foi desenhado para:
+- Processar arquivos massivos (~dezenas de milhões de registros)
+- Filtrar empresas ativas por CNAE de interesse
+- Normalizar campos críticos para análises posteriores
+- Gerar datasets enxutos para carga em SQL / Power BI
+
+Autor: Rodrigo Castro
+"""
+
 import pandas as pd
 import os
 import sys
 from pathlib import Path
 
-# ===== Pastas =====
-BASE_DIR = Path(__file__).resolve().parent
-PASTA_CNPJ = BASE_DIR / "dados_cnpj"         # Estabelecimentos
-PASTA_EMPRESAS = BASE_DIR / "dados_empresas" # Empresas
+# =============================================================================
+# Configuração de diretórios
+# =============================================================================
+
+# Diretório base do projeto (onde o script está localizado)
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Entrada: arquivos oficiais da Receita Federal
+PASTA_ESTABELECIMENTOS = BASE_DIR / "dados_brutos" / "dados_estabelecimentos"          # Estabelecimentos
+PASTA_EMPRESAS = BASE_DIR / "dados_brutos" / "dados_empresas"  # Empresas
+
+# Saída: dados já filtrados e normalizados
 PASTA_SAIDA = BASE_DIR / "dados_filtrados"
 PASTA_SAIDA.mkdir(exist_ok=True)
 
-OUTPUT_CLIENTES = PASTA_SAIDA / "clientes_filtrados.csv"
+OUTPUT_ESTABELECIMENTOS = PASTA_SAIDA / "estabelecimentos_filtrados.csv"
 OUTPUT_EMPRESAS = PASTA_SAIDA / "empresas_filtradas.csv"
 
-# ===== Lista de CNAEs de interesse =====
+# =============================================================================
+# Parâmetros de negócio
+# =============================================================================
+
+# Lista de CNAEs estratégicos para o estudo de mercado
+# (facilmente ajustável conforme o setor analisado)
 CNAES_LISTA = [
     "1061902","0113000","0131800","0133404","0134200","0141501","0141502","0500301",
     "0600002","0600003","0710301","0721901","0722701","0723501","0724301","0725100",
@@ -33,7 +59,10 @@ CNAES_LISTA = [
     "1092900","1093702"
 ]
 
-# ===== Colunas desejadas =====
+# =============================================================================
+# Definição das colunas finais desejadas
+# =============================================================================
+
 COLUNAS_ESTAB = [
     "CNPJ_BASICO","CNPJ_ORDEM","CNPJ_DV",
     "IDENTIFICADOR_MATRIZ_FILIAL","NOME_FANTASIA","SITUACAO_CADASTRAL",
@@ -50,8 +79,11 @@ COLUNAS_EMPRESAS = [
     "QUALIFICACAO_DO_RESPONSAVEL","CAPITAL_SOCIAL","PORTE","ENTE_FEDERATIVO"
 ]
 
-# ===== Mapas de índice (0-based) — confira com um arquivo de amostra =====
-# Estabelecimentos (layout RFB comum)
+# =============================================================================
+# Mapeamento de índices dos layouts oficiais da RFB (0-based)
+# =============================================================================
+
+# Estabelecimentos
 ESTAB_IDX = {
     "CNPJ_BASICO": 0,
     "CNPJ_ORDEM": 1,
@@ -64,7 +96,7 @@ ESTAB_IDX = {
     "NOME_CIDADE_EXTERIOR": 8,
     "PAIS": 9,
     "DATA_INICIO_ATIVIDADE": 10,
-    "CNAE_FISCAL_PRINCIPAL": 11,     # ATENÇÃO: geralmente é a 12ª coluna (0-based 11)
+    "CNAE_FISCAL_PRINCIPAL": 11,
     "CNAE_FISCAL_SECUNDARIA": 12,
     "TIPO_LOGRADOURO": 13,
     "LOGRADOURO": 14,
@@ -85,10 +117,10 @@ ESTAB_IDX = {
     "DATA_SITUACAO_ESPECIAL": 29,
 }
 
-# Empresas (layout RFB comum)
+# Empresas
 EMP_IDX = {
     "CNPJ_BASICO": 0,
-    "RAZAO_SOCIAL": 1,                 # nome empresarial
+    "RAZAO_SOCIAL": 1,
     "NATUREZA_JURIDICA": 2,
     "QUALIFICACAO_DO_RESPONSAVEL": 3,
     "CAPITAL_SOCIAL": 4,
@@ -96,59 +128,97 @@ EMP_IDX = {
     "ENTE_FEDERATIVO": 6,
 }
 
-# ===== usecols =====
+# Seleção direta de colunas (otimização de memória)
 ESTAB_USECOLS = [ESTAB_IDX[c] for c in COLUNAS_ESTAB if c in ESTAB_IDX]
 EMP_USECOLS   = [EMP_IDX[c]   for c in COLUNAS_EMPRESAS if c in EMP_IDX]
 
+# =============================================================================
+# Funções de processamento
+# =============================================================================
+
 def processar_csv_estab(csv_path: Path) -> pd.DataFrame:
+    """
+    Processa arquivos de estabelecimentos:
+    - Leitura em chunks
+    - Normalização de campos
+    - Filtro por CNAE e situação cadastral
+    """
     print(f"Processando estabelecimentos: {csv_path.name}")
+
     chunk_iter = pd.read_csv(
-        csv_path, sep=";", header=None, chunksize=100_000,
-        dtype=str, encoding="latin1", low_memory=False, usecols=ESTAB_USECOLS
+        csv_path,
+        sep=";",
+        header=None,
+        chunksize=100_000,
+        dtype=str,
+        encoding="latin1",
+        low_memory=False,
+        usecols=ESTAB_USECOLS
     )
 
     out_chunks = []
+
     for chunk in chunk_iter:
-        # Renomeia colunas numéricas -> nomes finais
+        # Aplica nomes finais às colunas conforme layout oficial
         chunk = chunk.rename(columns={ESTAB_IDX[k]: k for k in ESTAB_IDX if ESTAB_IDX[k] in chunk.columns})
 
-        # Garante todas as colunas pedidas (se faltar alguma no arquivo)
+        # Garante consistência do schema
         for col in COLUNAS_ESTAB:
             if col not in chunk.columns:
                 chunk[col] = ""
 
-        # Normalizações mínimas
+        # Normalizações essenciais
         chunk["CNPJ_BASICO"] = chunk["CNPJ_BASICO"].fillna("").str.strip().str.zfill(8)
         chunk["SITUACAO_CADASTRAL"] = chunk["SITUACAO_CADASTRAL"].fillna("").str.strip().str.zfill(2)
 
-        # CNAE principal: LIMPA E SOBRESCREVE na própria coluna (sem criar outra)
+        # Limpeza do CNAE principal
         chunk["CNAE_FISCAL_PRINCIPAL"] = (
-            chunk["CNAE_FISCAL_PRINCIPAL"].fillna("")
-            .astype(str).str.split(",").str[0].str.strip()         # se vier "1234567,..." pega o primeiro
-            .str.replace(r"\D", "", regex=True).str.zfill(7)       # só dígitos, 7 chars
+            chunk["CNAE_FISCAL_PRINCIPAL"]
+            .fillna("")
+            .astype(str)
+            .str.split(",").str[0]
+            .str.replace(r"\D", "", regex=True)
+            .str.zfill(7)
         )
 
-        # Filtro: ativos + CNAE de interesse
-        m = (chunk["SITUACAO_CADASTRAL"] == "02") & (chunk["CNAE_FISCAL_PRINCIPAL"].isin(CNAES_LISTA))
-        if m.any():
-            out_chunks.append(chunk.loc[m, COLUNAS_ESTAB].copy())
+        # Critério de negócio: empresa ativa + CNAE de interesse
+        filtro = (
+            (chunk["SITUACAO_CADASTRAL"] == "02") &
+            (chunk["CNAE_FISCAL_PRINCIPAL"].isin(CNAES_LISTA))
+        )
+
+        if filtro.any():
+            out_chunks.append(chunk.loc[filtro, COLUNAS_ESTAB].copy())
 
     if not out_chunks:
         return pd.DataFrame(columns=COLUNAS_ESTAB)
 
     df = pd.concat(out_chunks, ignore_index=True)
-    # Evita duplicatas (mesmo CNPJ_BASICO e CNAE principal)
-    df.drop_duplicates(subset=["CNPJ_BASICO","CNAE_FISCAL_PRINCIPAL"], inplace=True)
+    df.drop_duplicates(subset=["CNPJ_BASICO", "CNAE_FISCAL_PRINCIPAL"], inplace=True)
+
     return df
 
+
 def processar_csv_empresa(csv_path: Path, cnpjs_validos: set) -> pd.DataFrame:
+    """
+    Processa arquivos de empresas, filtrando apenas CNPJs
+    previamente selecionados na base de estabelecimentos.
+    """
     print(f"Processando empresas: {csv_path.name}")
+
     chunk_iter = pd.read_csv(
-        csv_path, sep=";", header=None, chunksize=100_000,
-        dtype=str, encoding="latin1", low_memory=False, usecols=EMP_USECOLS
+        csv_path,
+        sep=";",
+        header=None,
+        chunksize=100_000,
+        dtype=str,
+        encoding="latin1",
+        low_memory=False,
+        usecols=EMP_USECOLS
     )
 
     out_chunks = []
+
     for chunk in chunk_iter:
         chunk = chunk.rename(columns={EMP_IDX[k]: k for k in EMP_IDX if EMP_IDX[k] in chunk.columns})
 
@@ -158,21 +228,25 @@ def processar_csv_empresa(csv_path: Path, cnpjs_validos: set) -> pd.DataFrame:
 
         chunk["CNPJ_BASICO"] = chunk["CNPJ_BASICO"].fillna("").str.strip().str.zfill(8)
 
-        m = chunk["CNPJ_BASICO"].isin(cnpjs_validos)
-        if m.any():
-            out_chunks.append(chunk.loc[m, COLUNAS_EMPRESAS].copy())
+        filtro = chunk["CNPJ_BASICO"].isin(cnpjs_validos)
+        if filtro.any():
+            out_chunks.append(chunk.loc[filtro, COLUNAS_EMPRESAS].copy())
 
     if not out_chunks:
         return pd.DataFrame(columns=COLUNAS_EMPRESAS)
 
     df = pd.concat(out_chunks, ignore_index=True)
     df.drop_duplicates(subset=["CNPJ_BASICO"], inplace=True)
+
     return df
 
-# ===== Pipeline =====
-arquivos_estab = sorted(PASTA_CNPJ.glob("*.csv"))
+# =============================================================================
+# Execução do pipeline
+# =============================================================================
+
+arquivos_estab = sorted(PASTA_ESTABELECIMENTOS.glob("*.csv"))
 if not arquivos_estab:
-    print(f"Nenhum CSV encontrado em {PASTA_CNPJ}")
+    print(f"Nenhum CSV encontrado em {PASTA_ESTABELECIMENTOS}")
     sys.exit(1)
 
 dfs_clientes = []
@@ -181,9 +255,14 @@ for p in arquivos_estab:
     if not df.empty:
         dfs_clientes.append(df)
 
-df_clientes = pd.concat(dfs_clientes, ignore_index=True) if dfs_clientes else pd.DataFrame(columns=COLUNAS_ESTAB)
-df_clientes.to_csv(OUTPUT_CLIENTES, index=False, sep=";")
-print(f"\n✅ Parte 1 concluída. Registros: {len(df_clientes):,} | Arquivo: {OUTPUT_CLIENTES}")
+df_clientes = (
+    pd.concat(dfs_clientes, ignore_index=True)
+    if dfs_clientes
+    else pd.DataFrame(columns=COLUNAS_ESTAB)
+)
+
+df_clientes.to_csv(OUTPUT_ESTABELECIMENTOS, index=False, sep=";")
+print(f"\n✅ Parte 1 concluída. Registros: {len(df_clientes):,} | Arquivo: {OUTPUT_ESTABELECIMENTOS}")
 
 cnpjs_validos = set(df_clientes["CNPJ_BASICO"].unique())
 print(f"CNPJs base únicos: {len(cnpjs_validos):,}")
@@ -199,6 +278,11 @@ for p in arquivos_emp:
     if not df.empty:
         dfs_empresas.append(df)
 
-df_empresas = pd.concat(dfs_empresas, ignore_index=True) if dfs_empresas else pd.DataFrame(columns=COLUNAS_EMPRESAS)
+df_empresas = (
+    pd.concat(dfs_empresas, ignore_index=True)
+    if dfs_empresas
+    else pd.DataFrame(columns=COLUNAS_EMPRESAS)
+)
+
 df_empresas.to_csv(OUTPUT_EMPRESAS, index=False, sep=";")
 print(f"\n✅ Parte 2 concluída. Registros: {len(df_empresas):,} | Arquivo: {OUTPUT_EMPRESAS}")

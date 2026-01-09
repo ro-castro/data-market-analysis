@@ -1,0 +1,10 @@
+DADOS NÃO VERSIONADOS
+
+Os dados utilizados neste projeto são públicos e disponibilizados
+pela Receita Federal do Brasil (CNPJ – Dados Abertos).
+
+Fonte oficial:
+https://arquivos.receitafederal.gov.br/dados/cnpj/dados_abertos_cnpj/
+
+Para instruções detalhadas de download, extração e execução,
+consulte o README principal do repositório.
