@@ -167,16 +167,6 @@ python pesquisamercado2.py
 
 ---
 
-## 🤝 Contribuições
-
-Contribuições são bem-vindas!
-
-* Fork o projeto
-* Crie uma branch (`feature/minha-feature`)
-* Abra um Pull Request
-
----
-
 ## ✍️ Autor
 
 **Rodrigo Castro**
