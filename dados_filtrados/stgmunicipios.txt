@@ -1,0 +1,19 @@
+Baixar no site da receita, a tabela dos municipios e códigos, importar arquivo simples como stg_municipios (nvarcharmax)
+
+Criar tabela dimensão:
+
+CREATE TABLE dbo.dim_municipios (
+    codigo_municipio INT PRIMARY KEY,
+    nome_municipio NVARCHAR(100),
+    uf CHAR(2)
+);
+
+abastecer com os dados:
+
+INSERT INTO dbo.dim_municipios
+SELECT DISTINCT
+    TRY_CAST(codigo AS INT),
+    cidade,
+    uf
+FROM dbo.municipios_staging;
+
