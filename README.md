@@ -1,4 +1,4 @@
-# 📊 Market Insights Brazil
+# 📊 Market Insights Brasil
 
 Solução completa para **pesquisa de mercado e inteligência de negócios** baseada em **dados públicos de empresas brasileiras (Receita Federal)**. O projeto integra **Python (pandas)**, **SQL** e **Power BI** para filtrar, tratar e analisar milhões de registros, permitindo identificar empresas por **CNAE**, **situação cadastral**, **porte**, **localização** e **tempo de atividade**.
 
